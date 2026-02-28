@@ -15,6 +15,9 @@ pub fn parseMcData(w: *Writer, dir: std.fs.Dir, out_dir: std.fs.Dir, name: []con
         }
         decls.deinit(gpa);
     }
+    var this_dir: ?std.fs.Dir = null;
+    defer if (!std.mem.eql(u8, "root", name) and this_dir != null) this_dir.?.close();
+    if (std.mem.eql(u8, "root", name)) this_dir = out_dir;
 
     var it = dir.iterate();
     while (try it.next()) |f| {
@@ -32,19 +35,20 @@ pub fn parseMcData(w: *Writer, dir: std.fs.Dir, out_dir: std.fs.Dir, name: []con
                 else
                     try w.interface.print("@import(\"{s}/{s}.zig\");\n", .{ name, f.name });
 
-                try out_dir.makeDir(f.name);
+                if (this_dir == null) {
+                    try out_dir.makeDir(name);
+                    this_dir = try out_dir.openDir(name, .{});
+                }
                 const filename = try std.fmt.allocPrint(gpa, "{s}.zig", .{f.name});
                 defer gpa.free(filename);
-                var file = try out_dir.createFile(filename, .{});
+                var file = try this_dir.?.createFile(filename, .{});
                 defer file.close();
                 var buf: [300]u8 = undefined;
                 var wr = file.writer(&buf);
                 var w_ = Writer{ .interface = &wr.interface };
                 defer w_.interface.flush() catch {};
-                var next_out_dir = try out_dir.openDir(f.name, .{});
-                defer next_out_dir.close();
 
-                try parseMcData(&w_, next_dir, next_out_dir, f.name, gpa, translatables);
+                try parseMcData(&w_, next_dir, this_dir.?, f.name, gpa, translatables);
             },
             .file => {
                 const data = try dir.readFileAlloc(
