@@ -11,6 +11,7 @@ pub fn writeSnakeToCamel(writer: *std.Io.Writer, text: []const u8) !void {
     }
 }
 
+//TODO: remove
 pub fn snakeToCamelAlloc(gpa: std.mem.Allocator, text: []const u8) ![]u8 {
     var res = try std.ArrayList(u8).initCapacity(gpa, text.len);
     var to_upper = false;

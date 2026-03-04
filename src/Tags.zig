@@ -32,13 +32,11 @@ pub fn parseTags(allocator: std.mem.Allocator, data_dir: std.fs.Dir, out_dir: st
     var w: Writer = .{ .interface = &fw.interface };
     defer w.interface.flush() catch {};
 
-    try w.interface.writeAll("pub const Tag = @import(\"Tag.zig\");\n\n");
     var tags: Self = .{ .arena = std.heap.ArenaAllocator.init(allocator) };
     errdefer tags.deinit();
     var arena = std.heap.ArenaAllocator.init(allocator);
     const a = arena.allocator();
     defer arena.deinit();
-    //TODO: std.MultiArrayList(comptime T: type)
     var name_stack: std.ArrayList([]const u8) = .empty;
     defer {
         std.debug.assert(name_stack.items.len == 0);
@@ -115,7 +113,7 @@ pub fn parseTags(allocator: std.mem.Allocator, data_dir: std.fs.Dir, out_dir: st
                                 defer parsed.deinit();
                                 changed = true;
                                 _ = waiting_tags.swapRemove(i);
-                                w.assign(name, "Tag", true);
+                                w.assign(name, null, true);
 
                                 try printTag(&w, new_tag, tags.namespaces.items);
                                 w.endStatement();
@@ -149,20 +147,20 @@ pub fn parseTags(allocator: std.mem.Allocator, data_dir: std.fs.Dir, out_dir: st
             w.enumField(item.*, null, null);
         }
     }
-    try w.interface.writeAll(
-        \\    
-        \\pub fn tag(self: TagId) Tag {
-        \\    return switch(self) {
-        \\
-    );
-    var it = tags.tag_path.iterator();
-    while (it.next()) |item| {
-        try w.interface.print("      .@\"{s}\" => {s}.@\"{s}\",\n", .{ item.key_ptr.*, item.value_ptr.*, item.key_ptr.* });
-    }
-    try w.interface.writeAll(
-        \\  };
-        \\}
-    );
+    // try w.interface.writeAll(
+    //     \\
+    //     \\pub fn tag(self: TagId) Tag {
+    //     \\    return switch(self) {
+    //     \\
+    // );
+    // var it = tags.tag_path.iterator();
+    // while (it.next()) |item| {
+    //     try w.interface.print("      .@\"{s}\" => {s}.@\"{s}\",\n", .{ item.key_ptr.*, item.value_ptr.*, item.key_ptr.* });
+    // }
+    // try w.interface.writeAll(
+    //     \\  };
+    //     \\}
+    // );
 
     w.indentation -= 1;
     w.indent();
