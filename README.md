@@ -47,7 +47,19 @@ After that, you can use it as a build dependency like so:
 
 Or...
 
-TODO
+use build.zig to do the job for you like this:
+
+```
+    const run_gen = b.addRunArtifact(exe);
+    run_gen.addArg("1.21.11");
+    const out = run_gen.addOutputDirectoryArg("out");
+    _ = run_gen.addOutputDirectoryArg("tmp");
+    const mcg = b.addModule(
+        "mcg",
+        .{ .root_source_file = out.path(b, "root.zig") },
+    );
+
+```
 
 
 
