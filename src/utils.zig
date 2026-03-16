@@ -70,6 +70,14 @@ pub fn containsForbiddenChar(text: []const u8) bool {
     return false;
 }
 
+pub fn writeId(w: *std.Io.Writer, text: []const u8) !void {
+    if (containsForbiddenChar(text)) {
+        try w.writeAll("@\"");
+        try writeEscaped(w, text);
+        try w.writeByte('"');
+    } else try w.writeAll(text);
+}
+
 pub fn join(comptime T: type, gpa: std.mem.Allocator, slices: [][]const T, separator: T) ![]T {
     var arr = std.ArrayList(T){};
     for (slices, 0..) |slice, i| {

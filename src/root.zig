@@ -86,7 +86,8 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
         try w.interface.writeAll("pub const tags = @import(\"tags.zig\");\n");
 
         const data_gen: DataGen = .{ .gpa = gpa, .translatables = &translables.value.map };
-        try data_gen.parseMcData(&w, mc_data_dir, out, null);
+
+        try data_gen.parseMcData(&w, mc_data_dir, out, null, null, 0);
     }
 }
 
