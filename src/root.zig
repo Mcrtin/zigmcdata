@@ -1,8 +1,6 @@
 const std = @import("std");
 const lang = @import("lang.zig");
-const DataGen = @import("mc_data.zig");
 const Tags = @import("Tags.zig");
-const Writer = @import("Writer.zig");
 
 const VersionType = enum { snapshot, release, old_alpha, old_beta };
 const VersionData = struct { id: []const u8, type: VersionType, url: []const u8, time: []const u8, releaseTime: []const u8 };
@@ -78,16 +76,17 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
         var file = try out.createFile("root.zig", .{});
         defer file.close();
         var buf: [300]u8 = undefined;
-        var wr = file.writer(&buf);
-        var w = Writer{ .interface = &wr.interface };
+        var w = file.writer(&buf);
         defer w.interface.flush() catch {};
 
         try w.interface.writeAll("pub const Lang = @import(\"lang.zig\").Lang;\n");
         try w.interface.writeAll("pub const tags = @import(\"tags.zig\");\n");
 
-        const data_gen: DataGen = .{ .gpa = gpa, .translatables = &translables.value.map };
+        // const data_gen: DataGen = .{ .gpa = gpa, .translatables = &translables.value.map };
 
-        try data_gen.parseMcData(&w, mc_data_dir, out, null, null, 0);
+        try @import("mc.zig").parseData(gpa, mc_data_dir, out);
+
+        // try data_gen.parseMcData(&w, mc_data_dir, out, null, null, 0);
     }
 }
 
