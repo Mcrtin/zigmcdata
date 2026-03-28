@@ -51,13 +51,7 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
 
     var walker = try dir.walk(alloc);
     defer walker.deinit();
-    var last_depth = walker.stack.items.len - 1;
     while (try walker.next()) |f| {
-        const depth = walker.stack.items.len - 1;
-        while (last_depth > depth) : (last_depth -= 1) {
-            try w.interface.splatByteAll(' ', (last_depth - 1) * 4);
-            try w.interface.writeAll("};\n");
-        }
         switch (f.kind) {
             .file => {
                 const file = try f.dir.openFile(f.basename, .{});
@@ -69,11 +63,8 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
                 const ext = std.meta.stringToEnum(FileExtension, std.fs.path.extension(f.basename)[1..]) orelse return error.WrongFileType;
                 switch (ext) {
                     .json, .mcmeta => {
-                        const field_name = std.fs.path.stem(f.basename);
-
-                        try w.interface.splatByteAll(' ', depth * 4);
                         try w.interface.writeAll("pub const ");
-                        try writeZig.printId(&w.interface, field_name);
+                        try writeZig.printId(&w.interface, try std.fmt.bufPrint(&pbuf, "minecraft:{s}", .{f.path[0 .. f.path.len - std.fs.path.extension(f.path).len]}));
                         try w.interface.print(": {s}", .{file_data.type_name});
 
                         try w.interface.writeAll(" = ");
@@ -89,30 +80,16 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
                             return e;
                         };
                         defer val.deinit();
-                        try writeZig.write(&w.interface, depth, val.value);
+                        try writeZig.write(&w.interface, 0, val.value);
                         try w.interface.writeAll(";\n");
                     },
                     .nbt => {},
                 }
             },
-            .directory => {
-                if (!(last_depth < depth)) {
-                    try w.interface.splatByteAll(' ', (depth - 1) * 4);
-                    try w.interface.writeAll("};\n");
-                }
-                try w.interface.splatByteAll(' ', (depth - 1) * 4);
-                try w.interface.writeAll("pub const ");
-                try writeZig.printId(&w.interface, try std.fmt.bufPrint(&pbuf, "{s}/", .{f.basename}));
-                try w.interface.writeAll(" = struct {\n");
-            },
+            .directory => {},
 
             else => return error.WrongFileType,
         }
-        last_depth = depth;
-    }
-    while (last_depth > 0) : (last_depth -= 1) {
-        try w.interface.splatByteAll(' ', (last_depth - 1) * 4);
-        try w.interface.writeAll("};\n");
     }
 }
 
