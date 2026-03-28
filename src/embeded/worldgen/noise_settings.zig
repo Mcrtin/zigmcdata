@@ -15,7 +15,7 @@ noise: struct {
 noise_router: NoiseRouter,
 ore_veins_enabled: bool,
 sea_level: i32,
-spawn_target: []ParameterPoint,
+spawn_target: []const ParameterPoint,
 surface_rule: *const SurfaceRule,
 
 const DensityFunction = @import("density_function.zig").DensityF;
@@ -67,8 +67,8 @@ pub const Condition = union(enum) {
         true_at_and_below: HeightCondition,
     },
     @"minecraft:above_preliminary_surface": struct {},
-    @"minecraft:biome": struct { biome_is: [][]const u8 },
-    @"minecraft:not": struct { invert: *Condition },
+    @"minecraft:biome": struct { biome_is: []const []const u8 },
+    @"minecraft:not": struct { invert: *const Condition },
     @"minecraft:y_above": struct {
         add_stone_depth: bool,
         anchor: HeightCondition,
@@ -142,8 +142,8 @@ pub const BlockState = struct {
 };
 
 pub const SurfaceRule = union(enum) {
-    @"minecraft:sequence": struct { sequence: []*const SurfaceRule },
-    @"minecraft:condition": struct { if_true: Condition, then_run: *SurfaceRule },
+    @"minecraft:sequence": struct { sequence: []const SurfaceRule },
+    @"minecraft:condition": struct { if_true: Condition, then_run: *const SurfaceRule },
     @"minecraft:block": struct { result_state: BlockState },
     @"minecraft:bandlands": struct {},
 

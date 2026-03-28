@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub const SplineValue = union(enum) {
-    number: f64,
+    number: f32,
     object: Spline,
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
         return switch (try source.peekNextTokenType()) {
@@ -27,15 +27,15 @@ pub const SplineValue = union(enum) {
 pub const Spline = struct {
     coordinate: DensityF,
     points: []const struct {
-        location: f64,
-        derivative: f64,
+        location: f32,
+        derivative: f32,
         value: SplineValue,
     },
 };
 
 pub const DensityF = union(enum) {
     object: *const DensityFunction,
-    number: f64,
+    number: f32,
     string: []const u8,
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
         return switch (try source.peekNextTokenType()) {
@@ -105,8 +105,8 @@ pub const DensityFunction = union(enum) {
     @"minecraft:quarter_negative": Unary,
     @"minecraft:squeeze": Unary,
     @"minecraft:invert": Unary,
-    @"minecraft:shift_a": Unary,
-    @"minecraft:shift_b": Unary,
+    @"minecraft:shift_a": struct { argument: Noise },
+    @"minecraft:shift_b": struct { argument: Noise },
 
     @"minecraft:end_islands": NoArgument,
     @"minecraft:blend_offset": NoArgument,

@@ -5,27 +5,37 @@ const FileData = struct {
     type_data: []const u8,
     type_file: type,
     path: []const u8,
+    type_name: []const u8,
 };
 gpa: std.mem.Allocator,
 translatables: *const std.StringArrayHashMapUnmanaged([]const u8),
 
-const type_table = std.StaticStringMap(FileData).initComptime(.{
-    .{ "worldgen/noise_settings", FileData{
-        .path = "worldgen/noise_settings",
-        .type_data = @embedFile("embeded/worldgen/noise_settings.zig"),
-        .type_file = @import("embeded/worldgen/noise_settings.zig"),
-    } },
-    .{ "worldgen/density_function", FileData{
-        .path = "worldgen/density_function",
-        .type_data = @embedFile("embeded/worldgen/density_function.zig"),
-        .type_file = @import("embeded/worldgen/density_function.zig").DensityF,
-    } },
-});
+const Parsers = struct {
+    pub const worldgen = struct {
+        pub const noise_settings: FileData = .{
+            .path = "worldgen/noise_settings",
+            .type_data = @embedFile("embeded/worldgen/noise_settings.zig"),
+            .type_file = @import("embeded/worldgen/noise_settings.zig"),
+            .type_name = "NoiseSettings",
+        };
+        pub const density_function: FileData = .{
+            .path = "worldgen/density_function",
+            .type_data = @embedFile("embeded/worldgen/density_function.zig"),
+            .type_file = @import("embeded/worldgen/density_function.zig").DensityF,
+            .type_name = "DensityF",
+        };
+        pub const noise: FileData = .{
+            .path = "worldgen/noise",
+            .type_data = @embedFile("embeded/worldgen/noise.zig"),
+            .type_file = @import("embeded/worldgen/noise.zig"),
+            .type_name = "Noise",
+        };
+    };
+};
 
 const FileExtension = enum { json, mcmeta, nbt };
 
 pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: std.fs.Dir, out: std.fs.Dir) !void {
-    std.debug.print("work on: {s}\n", .{file_data.path});
     var pbuf: [std.fs.max_path_bytes]u8 = undefined;
     var dir = try mc_data_dir.openDir(file_data.path, .{ .iterate = true });
     defer dir.close();
@@ -37,19 +47,19 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
     var w = out_file.writer(&wbuf);
     defer w.interface.flush() catch {};
 
+    try w.interface.writeAll(file_data.type_data);
+
     var walker = try dir.walk(alloc);
     defer walker.deinit();
     var last_depth = walker.stack.items.len - 1;
     while (try walker.next()) |f| {
         const depth = walker.stack.items.len - 1;
-        std.debug.print("depth: {d}\n", .{depth});
         while (last_depth > depth) : (last_depth -= 1) {
-            try w.interface.splatByteAll(' ', (last_depth - 1) * 3);
+            try w.interface.splatByteAll(' ', (last_depth - 1) * 4);
             try w.interface.writeAll("};\n");
         }
         switch (f.kind) {
             .file => {
-                std.debug.print("current file: {s}\n", .{f.basename});
                 const file = try f.dir.openFile(f.basename, .{});
                 defer file.close();
 
@@ -61,9 +71,11 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
                     .json, .mcmeta => {
                         const field_name = std.fs.path.stem(f.basename);
 
-                        try w.interface.splatByteAll(' ', depth * 3);
+                        try w.interface.splatByteAll(' ', depth * 4);
                         try w.interface.writeAll("pub const ");
                         try writeZig.printId(&w.interface, field_name);
+                        try w.interface.print(": {s}", .{file_data.type_name});
+
                         try w.interface.writeAll(" = ");
 
                         var r = std.json.Reader.init(alloc, &freader.interface);
@@ -85,10 +97,10 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
             },
             .directory => {
                 if (!(last_depth < depth)) {
-                    try w.interface.splatByteAll(' ', (depth - 1) * 3);
+                    try w.interface.splatByteAll(' ', (depth - 1) * 4);
                     try w.interface.writeAll("};\n");
                 }
-                try w.interface.splatByteAll(' ', (depth - 1) * 3);
+                try w.interface.splatByteAll(' ', (depth - 1) * 4);
                 try w.interface.writeAll("pub const ");
                 try writeZig.printId(&w.interface, try std.fmt.bufPrint(&pbuf, "{s}/", .{f.basename}));
                 try w.interface.writeAll(" = struct {\n");
@@ -99,13 +111,28 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
         last_depth = depth;
     }
     while (last_depth > 0) : (last_depth -= 1) {
-        try w.interface.splatByteAll(' ', (last_depth - 1) * 3);
+        try w.interface.splatByteAll(' ', (last_depth - 1) * 4);
         try w.interface.writeAll("};\n");
     }
 }
 
-pub fn parseData(alloc: std.mem.Allocator, mc_data_dir: std.fs.Dir, out: std.fs.Dir) !void {
-    inline for (type_table.values()) |item| {
-        try parseDataDir(alloc, item, mc_data_dir, out);
+pub fn parseData(alloc: std.mem.Allocator, mc_data_dir: std.fs.Dir, out: std.fs.Dir, w: *std.Io.Writer) !void {
+    try parseDataInner(Parsers, alloc, mc_data_dir, out, w, 0);
+}
+
+fn parseDataInner(T: type, alloc: std.mem.Allocator, mc_data_dir: std.fs.Dir, out: std.fs.Dir, w: *std.Io.Writer, depth: usize) !void {
+    inline for (@typeInfo(T).@"struct".decls) |decl| {
+        const field = @field(T, decl.name);
+        if (@TypeOf(field) == FileData) {
+            try w.splatByteAll(' ', depth * 4);
+            try w.print("pub const {s} = @import(\"{s}\");\n", .{ decl.name, @field(T, decl.name).path ++ ".zig" });
+            try parseDataDir(alloc, @field(T, decl.name), mc_data_dir, out);
+        } else {
+            try w.splatByteAll(' ', depth * 4);
+            try w.print("pub const {s} = struct {{\n", .{decl.name});
+            try parseDataInner(field, alloc, mc_data_dir, out, w, depth + 1);
+            try w.splatByteAll(' ', depth * 4);
+            try w.writeAll("};\n");
+        }
     }
 }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const lang = @import("lang.zig");
 const Tags = @import("Tags.zig");
+const mc = @import("mc.zig");
 
 const VersionType = enum { snapshot, release, old_alpha, old_beta };
 const VersionData = struct { id: []const u8, type: VersionType, url: []const u8, time: []const u8, releaseTime: []const u8 };
@@ -84,7 +85,7 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
 
         // const data_gen: DataGen = .{ .gpa = gpa, .translatables = &translables.value.map };
 
-        try @import("mc.zig").parseData(gpa, mc_data_dir, out);
+        try mc.parseData(gpa, mc_data_dir, out, &w.interface);
 
         // try data_gen.parseMcData(&w, mc_data_dir, out, null, null, 0);
     }

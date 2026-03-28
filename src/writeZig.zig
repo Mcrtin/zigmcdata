@@ -16,34 +16,34 @@ pub fn write(w: *std.Io.Writer, depth: usize, val: anytype) Error!void {
         } else if (p.size == .slice) {
             try w.writeAll("&.{\n");
             for (val) |v| {
-                try w.splatByteAll(' ', (depth + 1) * 3);
+                try w.splatByteAll(' ', (depth + 1) * 4);
                 try write(w, depth + 1, v);
                 try w.writeAll(",\n");
             }
-            try w.splatByteAll(' ', depth * 3);
+            try w.splatByteAll(' ', depth * 4);
             try w.writeAll("}");
         } else @compileError("unsupported pointer type " ++ @tagName(p.size)),
         .vector, .array => {
             try w.writeAll(".{\n");
             for (val) |v| {
-                try w.splatByteAll(' ', (depth + 1) * 3);
+                try w.splatByteAll(' ', (depth + 1) * 4);
                 try write(w, depth + 1, v);
                 try w.writeAll(",\n");
             }
-            try w.splatByteAll(' ', depth * 3);
+            try w.splatByteAll(' ', depth * 4);
             try w.writeAll("}");
         },
         .@"struct" => |s| {
             try w.writeAll(".{\n");
             inline for (s.fields) |field| {
-                try w.splatByteAll(' ', (depth + 1) * 3);
+                try w.splatByteAll(' ', (depth + 1) * 4);
                 try w.writeByte('.');
                 try printId(w, field.name);
                 try w.writeAll(" = ");
                 try write(w, depth + 1, @field(val, field.name));
                 try w.writeAll(",\n");
             }
-            try w.splatByteAll(' ', depth * 3);
+            try w.splatByteAll(' ', depth * 4);
             try w.writeAll("}");
         },
         .undefined => try w.writeAll("undefined"),
@@ -52,7 +52,7 @@ pub fn write(w: *std.Io.Writer, depth: usize, val: anytype) Error!void {
         .enum_literal, .@"enum", .error_set, .error_union => try w.print(".{t}", .{val}),
         .@"union" => {
             try w.writeAll(".{\n");
-            try w.splatByteAll(' ', (depth + 1) * 3);
+            try w.splatByteAll(' ', (depth + 1) * 4);
             try w.writeByte('.');
             try printId(w, @tagName(val));
             try w.writeAll(" = ");
@@ -60,7 +60,7 @@ pub fn write(w: *std.Io.Writer, depth: usize, val: anytype) Error!void {
                 inline else => |v| try write(w, depth + 1, @field(val, @tagName(v))),
             }
             try w.writeAll(",\n");
-            try w.splatByteAll(' ', depth * 3);
+            try w.splatByteAll(' ', depth * 4);
             try w.writeAll("}");
         },
         else => @compileError("can't write " ++ @typeName(T)),

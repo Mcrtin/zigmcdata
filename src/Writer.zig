@@ -6,7 +6,7 @@ indentation: u32 = 0,
 
 const Self = @This();
 pub fn indent(self: *Self) void {
-    self.interface.splatByteAll(' ', self.indentation * 3) catch unreachable;
+    self.interface.splatByteAll(' ', self.indentation * 4) catch unreachable;
 }
 
 pub fn indented(self: *Self, comptime str: []const u8) void {
