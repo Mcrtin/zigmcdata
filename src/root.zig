@@ -2,6 +2,7 @@ const std = @import("std");
 const lang = @import("lang.zig");
 const Tags = @import("Tags.zig");
 const mc = @import("mc.zig");
+const block = @import("block.zig");
 
 const VersionType = enum { snapshot, release, old_alpha, old_beta };
 const VersionData = struct { id: []const u8, type: VersionType, url: []const u8, time: []const u8, releaseTime: []const u8 };
@@ -51,8 +52,7 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
         try downloadAndExtractServer(gpa, version, json_out, tmp_out)
     else
         it.reset();
-    var translables: std.json.Parsed(std.json.ArrayHashMap([]const u8)) = undefined;
-    {
+    const translables: std.json.Parsed(std.json.ArrayHashMap([]const u8)) = blk: {
         const lang_file = try json_out.openFile("assets/minecraft/lang/en_us.json", .{});
         defer lang_file.close();
         const out_lang = try out.createFile("lang.zig", .{});
@@ -65,9 +65,21 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
         const lang_data = try readJson(gpa, std.json.ArrayHashMap([]const u8), &lang_reader.interface);
         errdefer lang_data.deinit();
         try lang.gen(&w.interface, &lang_data.value.map);
-        translables = lang_data;
-    }
+        break :blk lang_data;
+    };
     defer translables.deinit();
+    {
+        const f = try json_out.openFile("reports/blocks.json", .{});
+        defer f.close();
+        const out_lang = try out.createFile("Block.zig", .{});
+        defer out_lang.close();
+        var buf: [1024]u8 = undefined;
+        var wbuf: [1024]u8 = undefined;
+        var w = out_lang.writer(&wbuf);
+        defer w.interface.flush() catch {};
+        var r = f.reader(&buf);
+        try block.gen(gpa, &r.interface, &w.interface);
+    }
     {
         var mc_data_dir = try json_out.openDir("data/minecraft/", .{ .iterate = true });
         defer mc_data_dir.close();
@@ -82,12 +94,9 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
 
         try w.interface.writeAll("pub const Lang = @import(\"lang.zig\").Lang;\n");
         try w.interface.writeAll("pub const tags = @import(\"tags.zig\");\n");
-
-        // const data_gen: DataGen = .{ .gpa = gpa, .translatables = &translables.value.map };
+        try w.interface.writeAll("pub const Block = @import(\"Block.zig\");\n");
 
         try mc.parseData(gpa, mc_data_dir, out, &w.interface);
-
-        // try data_gen.parseMcData(&w, mc_data_dir, out, null, null, 0);
     }
 }
 
@@ -169,6 +178,11 @@ pub fn downloadAndExtractServer(
             if (std.mem.startsWith(u8, filename, "data") or std.mem.startsWith(u8, filename, "asset"))
                 try item.extract(&r, .{}, &filename_buf, out_dir);
         }
+    }
+    {
+        // try std.process.execv(gpa, &.{ "java", "-DbulderMainClass=\"net.minecraft.data.Main", "-jar", "server.jar", "--reports", "--output", "../json" });
+        //java -DbundlerMainClass="net.minecraft.data.Main" -jar server.jar --reports --output ../json
+
     }
 }
 
