@@ -30,6 +30,12 @@ const Parsers = struct {
             .type_file = @import("embeded/worldgen/noise.zig"),
             .type_name = "Noise",
         };
+        pub const biome: FileData = .{
+            .path = "worldgen/biome",
+            .type_data = @embedFile("embeded/worldgen/biome.zig"),
+            .type_file = @import("embeded/worldgen/biome.zig"),
+            .type_name = "Biome",
+        };
     };
 };
 
@@ -71,9 +77,9 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
 
                         var r = std.json.Reader.init(alloc, &freader.interface);
                         defer r.deinit();
-                        const val = std.json.parseFromTokenSource(file_data.type_file, alloc, &r, .{}) catch |e| {
+                        const val = std.json.parseFromTokenSource(file_data.type_file, alloc, &r, .{ .ignore_unknown_fields = true }) catch |e| { //TODO
                             if (r.peekNextTokenType()) |next_token| {
-                                std.debug.print("next token: {t}\n", .{next_token});
+                                std.debug.print("in: {s} next token: {t}\n", .{ f.path, next_token });
                             } else |e2| {
                                 std.debug.print("next token errored: {t}\n", .{e2});
                             }
