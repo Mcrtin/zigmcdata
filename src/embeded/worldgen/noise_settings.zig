@@ -6,19 +6,22 @@ default_block: BlockState,
 default_fluid: BlockState,
 disable_mob_generation: bool,
 legacy_random_source: bool,
-noise: struct {
-    height: u11,
-    min_y: i12,
-    size_horizontal: u3,
-    size_vertical: u3,
-},
+noise: NoiseGeneratorSettings,
 noise_router: NoiseRouter,
 ore_veins_enabled: bool,
-sea_level: i32,
+sea_level: i12,
 spawn_target: []const ParameterPoint,
 surface_rule: *const SurfaceRule,
 
 const DensityFunction = @import("density_function.zig").DensityF;
+
+pub const NoiseGeneratorSettings = struct {
+    height: u11,
+    min_y: i12,
+    size_horizontal: u3,
+    size_vertical: u3,
+};
+
 pub const NoiseRouter = struct {
     barrier: DensityFunction,
     continents: DensityFunction,

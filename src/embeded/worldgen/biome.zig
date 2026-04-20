@@ -1,5 +1,5 @@
 const std = @import("std");
-pub const Biome = @This();
+const Biome = @This();
 pub const Spawner = struct {
     type: []const u8,
     maxCount: u31,

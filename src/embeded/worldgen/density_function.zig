@@ -63,6 +63,7 @@ pub const DensityFunction = union(enum) {
     pub const Binary = struct { argument1: Df, argument2: Df };
     pub const Unary = struct { argument: Df };
     pub const NoArgument = struct {};
+    pub const Shift = struct { argument: Noise };
     const Df = DensityF;
     const Noise = []const u8;
     @"minecraft:spline": struct { spline: SplineValue },
@@ -86,16 +87,21 @@ pub const DensityFunction = union(enum) {
     @"minecraft:y_clamped_gradient": struct { from_value: f64, to_value: f64, from_y: i32, to_y: i32 },
     @"minecraft:weird_scaled_sampler": struct { input: Df, rarity_value_mapper: []const u8, noise: Noise },
     @"minecraft:noise": struct { noise: []const u8, xz_scale: f64, y_scale: f64 },
+    @"minecraft:clamp": struct { input: Df, min: f64, max: f64 },
+
+    @"minecraft:shift_a": Shift,
+    @"minecraft:shift_b": Shift,
+    @"minecraft:shift": Shift,
 
     @"minecraft:max": Binary,
     @"minecraft:min": Binary,
     @"minecraft:mul": Binary,
     @"minecraft:add": Binary,
-    @"minecraft:clamp": struct { input: Df, min: f64, max: f64 },
 
     @"minecraft:blend_density": Unary,
     @"minecraft:flat_cache": Unary,
     @"minecraft:cache_once": Unary,
+    @"minecraft:cache_all_in_cell": Unary,
     @"minecraft:cache_2d": Unary,
     @"minecraft:interpolated": Unary,
     @"minecraft:abs": Unary,
@@ -105,12 +111,12 @@ pub const DensityFunction = union(enum) {
     @"minecraft:quarter_negative": Unary,
     @"minecraft:squeeze": Unary,
     @"minecraft:invert": Unary,
-    @"minecraft:shift_a": struct { argument: Noise },
-    @"minecraft:shift_b": struct { argument: Noise },
 
     @"minecraft:end_islands": NoArgument,
     @"minecraft:blend_offset": NoArgument,
     @"minecraft:blend_alpha": NoArgument,
+
+    @"minecraft:constant": struct { argument: f64 }, //TODO
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !@This() {
         const T = @This();

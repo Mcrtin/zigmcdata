@@ -3,6 +3,7 @@ const lang = @import("lang.zig");
 const Tags = @import("Tags.zig");
 const mc = @import("mc.zig");
 const block = @import("block.zig");
+const biome_parameters = @import("biome_parameters.zig");
 
 const VersionType = enum { snapshot, release, old_alpha, old_beta };
 const VersionData = struct { id: []const u8, type: VersionType, url: []const u8, time: []const u8, releaseTime: []const u8 };
@@ -81,6 +82,16 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
         try block.gen(gpa, &r.interface, &w.interface);
     }
     {
+        var dir = try json_out.openDir("reports/biome_parameters/minecraft", .{ .iterate = true });
+        defer dir.close();
+        const out_file = try out.createFile("BiomeParameters.zig", .{});
+        defer out_file.close();
+        var wbuf: [1024]u8 = undefined;
+        var w = out_file.writer(&wbuf);
+        defer w.interface.flush() catch {};
+        try biome_parameters.gen(gpa, &dir, &w.interface);
+    }
+    {
         var mc_data_dir = try json_out.openDir("data/minecraft/", .{ .iterate = true });
         defer mc_data_dir.close();
 
@@ -95,6 +106,7 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
         try w.interface.writeAll("pub const Lang = @import(\"lang.zig\").Lang;\n");
         try w.interface.writeAll("pub const tags = @import(\"tags.zig\");\n");
         try w.interface.writeAll("pub const Block = @import(\"Block.zig\");\n");
+        try w.interface.writeAll("pub const BiomeParameters = @import(\"BiomeParameters.zig\");\n");
 
         try mc.parseData(gpa, mc_data_dir, out, &w.interface);
     }

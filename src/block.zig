@@ -15,18 +15,21 @@ pub fn gen(gpa: std.mem.Allocator, reader: *std.Io.Reader, out: *std.Io.Writer) 
     const parsed = try std.json.parseFromTokenSource(std.json.ArrayHashMap(Block), gpa, &r, .{ .allocate = .alloc_always });
     defer parsed.deinit();
     const blocks: std.json.ArrayHashMap(Block) = parsed.value;
-    var properties: std.StringArrayHashMapUnmanaged([][]const u8) = .empty;
+    var properties: std.StringArrayHashMapUnmanaged([]const []const u8) = .empty;
+    defer properties.deinit(gpa);
     const embedded_block = @embedFile("embeded/Block.zig");
     const line_len, const remaining = try split(out, embedded_block, "//__insert_blocks_here__");
     var max_state: usize = 0;
     for (blocks.map.keys(), blocks.map.values()) |k, v| {
         var variants: usize = 1;
-        for (v.properties.map.values()) |prop| {
+        for (v.properties.map.keys(), v.properties.map.values()) |name, prop| {
+            try properties.put(gpa, name, prop);
             variants *= prop.len;
         }
         const first = v.states[0].id;
         const last = first + variants - 1;
         max_state = @max(max_state, last);
+
         try out.splatByteAll(' ', line_len);
         try out.print("{d}...{d} => &@\"{s}\",\n", .{ first, last, k });
     }
@@ -40,14 +43,19 @@ pub fn gen(gpa: std.mem.Allocator, reader: *std.Io.Reader, out: *std.Io.Writer) 
         else {
             try out.writeAll("enum { ");
             for (v, 0..) |val, i| {
+                if (utils.containsForbiddenChar(val)) {
+                    try out.writeAll("@\"");
+                    try utils.writeEscaped(out, val);
+                    try out.writeByte('"');
+                } else try out.writeAll(val);
                 if (i + 1 == v.len)
-                    try out.print("{s} ", .{val})
+                    try out.writeAll(" ")
                 else
-                    try out.print("{s}, ", .{val});
+                    try out.writeAll(", ");
             }
             try out.writeByte('}');
         }
-        try out.writeAll("\n");
+        try out.writeAll(",\n");
     }
     _, _ = try split(out, remaining2, "//__cut_here__");
 
@@ -67,22 +75,23 @@ pub fn gen(gpa: std.mem.Allocator, reader: *std.Io.Reader, out: *std.Io.Writer) 
             \\
             \\
             \\pub const @"{s}": Block = .{{
+            \\    .name = "{s}",
             \\    .@"type" = "{s}",
-            \\    .first_instance = {d},
-            \\    .default_instance = {d},
+            \\    .first_instance = @enumFromInt({d}),
+            \\    .default_instance = @enumFromInt({d}),
             \\    .properties = &.{{ 
-        , .{ k, defs.fetchOrderedRemove("type").?.value.string, v.states[0].id, default });
+        , .{ k, k, defs.fetchOrderedRemove("type").?.value.string, v.states[0].id, default });
         for (v.properties.map.keys()) |prop_k| {
             try out.print(".{s}, ", .{prop_k});
         }
         try out.writeAll("},\n");
         std.debug.assert(defs.fetchOrderedRemove("properties").?.value.object.values().len == 0);
         if (defs.values().len > 0) {
-            try out.print("    .other = .init_comptime(.{{\n", .{});
+            try out.print("    .other = .initComptime(.{{\n", .{});
             for (defs.keys(), defs.values()) |def_k, def_v| {
-                try out.print("    .{{ \"{s}\", &", .{def_k});
+                try out.print("    .{{ \"{s}\", @as(*const anyopaque, @ptrCast(&", .{def_k});
                 try printJson(1, out, def_v, gpa);
-                try out.writeAll(" },\n");
+                try out.writeAll(")) },\n");
             }
             try out.writeAll("    }),\n");
         }
@@ -106,12 +115,9 @@ fn printJson(depth: u32, w: *std.io.Writer, val: std.json.Value, a: std.mem.Allo
         .float => |v| try w.printFloat(v, .{ .precision = 1 }),
         .number_string => |v| try w.writeAll(v),
         .string => |v| {
-            if (std.mem.startsWith(u8, v, "#minecraft:")) {
-                try w.writeAll(".@");
-            }
-            try w.writeByte('"');
+            try w.writeAll("@as([]const u8, \"");
             try utils.writeEscaped(w, v);
-            try w.writeByte('"');
+            try w.writeAll("\")");
         },
         .array => |v| {
             try w.writeAll("&.{\n");

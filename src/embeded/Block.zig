@@ -1,5 +1,6 @@
 const std = @import("std");
 type: []const u8,
+name: []const u8,
 properties: []const Property.Type,
 default_instance: Instance,
 first_instance: Instance,
@@ -12,27 +13,38 @@ pub const Instance = enum(std.math.IntFittingRange(0, MaxState)) {
     pub fn block(self: @This()) *const Block {
         return switch (@intFromEnum(self)) {
             //__insert_blocks_here__
+            else => unreachable,
         };
     }
 
-    pub fn properties(self: @This()) []const Property {
-        var it = std.mem.reverseIterator(self.block().properties);
-        var id = @intFromEnum(self) - @intFromEnum(self.block().first_instance);
-        var res: [self.block().properties.len]Property = undefined;
-        var i: usize = 0;
-        while (it.next()) |property| : (i += 1) {
-            const variants = Property.variants(property);
-            res[i] = @unionInit(Property, @tagName(property), if (@FieldType(Property, @tagName(property)) == bool) id % variants != 0 else @enumFromInt(id % variants));
-            id /= variants;
-        }
-        return res;
+    pub fn getProperty(self: @This(), comptime property: Property.Type) ?@FieldType(Property, @tagName(property)) {
+        const properties = self.block().properties;
+        const id = @intFromEnum(self) - @intFromEnum(self.block().first_instance);
+        if (std.mem.indexOfScalar(Property.Type, properties, property)) |idx| {
+            var variants: usize = 1;
+            for (properties[idx + 1 ..]) |prop|
+                variants *= Property.variants(prop);
+            const variant = (id / variants) % Property.variants(property);
+            return if (@FieldType(Property, @tagName(property)) == bool)
+                variant == 0
+            else
+                @enumFromInt(variant);
+        } else return null;
     }
 
-    pub fn getProperty(self: @This(), comptime property: Property.Type) ?@FieldType(Property, @tagName(property)) {
-        for (self.properties()) |prop| {
-            if (prop == property) return prop;
+    pub fn getIthProperty(self: @This(), idx: usize) ?Property {
+        const properties = self.block().properties;
+        const id = @intFromEnum(self) - @intFromEnum(self.block().first_instance);
+        if (idx >= properties.len) return null;
+        var variants: usize = 1;
+        for (properties[idx + 1 ..]) |prop|
+            variants *= Property.variants(prop);
+        const variant = (id / variants) % Property.variants(properties[idx]);
+        switch (properties[idx]) {
+            inline else => |p| {
+                return @unionInit(Property, @tagName(p), if (@FieldType(Property, @tagName(p)) == bool) variant == 0 else @enumFromInt(variant));
+            },
         }
-        return null;
     }
 };
 
