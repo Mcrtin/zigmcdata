@@ -23,12 +23,12 @@ pub fn deinit(self: Self) void {
 
 const DirType = enum { dir, has_files, is_sub };
 
-pub fn parseTags(allocator: std.mem.Allocator, data_dir: std.fs.Dir, out_dir: std.fs.Dir) !Self {
-    var start_dir = try data_dir.openDir("tags", .{ .iterate = true });
-    var file = try out_dir.createFile("tags.zig", .{});
-    defer file.close();
+pub fn parseTags(io: std.Io, allocator: std.mem.Allocator, data_dir: std.Io.Dir, out_dir: std.Io.Dir) !Self {
+    var start_dir = try data_dir.openDir(io, "tags", .{ .iterate = true });
+    var file = try out_dir.createFile(io, "tags.zig", .{});
+    defer file.close(io);
     var buf: [1024]u8 = undefined;
-    var fw = file.writer(&buf);
+    var fw = file.writer(io, &buf);
     var w: Writer = .{ .interface = &fw.interface };
     defer w.interface.flush() catch {};
 
@@ -42,20 +42,20 @@ pub fn parseTags(allocator: std.mem.Allocator, data_dir: std.fs.Dir, out_dir: st
         std.debug.assert(name_stack.items.len == 0);
         name_stack.deinit(a);
     }
-    var waiting_tags: std.ArrayList(struct { []const u8, std.json.Parsed(JsonType) }) = .{};
+    var waiting_tags: std.ArrayList(struct { []const u8, std.json.Parsed(JsonType) }) = .empty;
     defer {
         std.debug.assert(waiting_tags.items.len == 0);
         waiting_tags.deinit(a);
     }
 
-    var dirs: std.ArrayList(struct { std.fs.Dir.Iterator, DirType }) = .{};
+    var dirs: std.ArrayList(struct { std.Io.Dir.Iterator, DirType }) = .empty;
     defer {
         std.debug.assert(dirs.items.len == 0);
         dirs.deinit(a);
     }
     try dirs.append(a, .{ start_dir.iterateAssumeFirstIteration(), .dir });
     while (dirs.items.len > 0) {
-        var it: *std.fs.Dir.Iterator = @constCast(&dirs.items[dirs.items.len - 1][0]);
+        var it: *std.Io.Dir.Iterator = &dirs.items[dirs.items.len - 1][0];
         const dir_type = dirs.items[dirs.items.len - 1][1];
         const dir = it.dir;
         if (try it.next()) |f| {

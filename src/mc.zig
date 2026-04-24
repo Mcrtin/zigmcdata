@@ -41,36 +41,36 @@ const Parsers = struct {
 
 const FileExtension = enum { json, mcmeta, nbt };
 
-pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: std.fs.Dir, out: std.fs.Dir) !void {
+pub fn parseDataDir(io: std.Io, alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: std.Io.Dir, out: std.Io.Dir) !void {
     var pbuf: [std.fs.max_path_bytes]u8 = undefined;
-    var dir = try mc_data_dir.openDir(file_data.path, .{ .iterate = true });
-    defer dir.close();
-    var out_dir = try out.makeOpenPath(std.fs.path.dirname(file_data.path).?, .{});
-    defer out_dir.close();
-    const out_file = try out_dir.createFile(std.fmt.bufPrint(&pbuf, "{s}.zig", .{std.fs.path.basename(file_data.path)}) catch unreachable, .{});
-    defer out_file.close();
+    var dir = try mc_data_dir.openDir(io, file_data.path, .{ .iterate = true });
+    defer dir.close(io);
+    var out_dir = try out.createDirPathOpen(io, std.Io.Dir.path.dirname(file_data.path).?, .{});
+    defer out_dir.close(io);
+    const out_file = try out_dir.createFile(io, std.fmt.bufPrint(&pbuf, "{s}.zig", .{std.Io.Dir.path.basename(file_data.path)}) catch unreachable, .{});
+    defer out_file.close(io);
     var wbuf: [1024]u8 = undefined;
-    var w = out_file.writer(&wbuf);
+    var w = out_file.writer(io, &wbuf);
     defer w.interface.flush() catch {};
 
     try w.interface.writeAll(file_data.type_data);
 
     var walker = try dir.walk(alloc);
     defer walker.deinit();
-    while (try walker.next()) |f| {
+    while (try walker.next(io)) |f| {
         switch (f.kind) {
             .file => {
-                const file = try f.dir.openFile(f.basename, .{});
-                defer file.close();
+                const file = try f.dir.openFile(io, f.basename, .{});
+                defer file.close(io);
 
                 var buf: [1024]u8 = undefined;
-                var freader = file.reader(&buf);
+                var freader = file.reader(io, &buf);
 
-                const ext = std.meta.stringToEnum(FileExtension, std.fs.path.extension(f.basename)[1..]) orelse return error.WrongFileType;
+                const ext = std.meta.stringToEnum(FileExtension, std.Io.Dir.path.extension(f.basename)[1..]) orelse return error.WrongFileType;
                 switch (ext) {
                     .json, .mcmeta => {
                         try w.interface.writeAll("pub const ");
-                        try writeZig.printId(&w.interface, try std.fmt.bufPrint(&pbuf, "minecraft:{s}", .{f.path[0 .. f.path.len - std.fs.path.extension(f.path).len]}));
+                        try writeZig.printId(&w.interface, try std.fmt.bufPrint(&pbuf, "minecraft:{s}", .{f.path[0 .. f.path.len - std.Io.Dir.path.extension(f.path).len]}));
                         try w.interface.print(": {s}", .{file_data.type_name});
 
                         try w.interface.writeAll(" = ");
@@ -99,21 +99,21 @@ pub fn parseDataDir(alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: 
     }
 }
 
-pub fn parseData(alloc: std.mem.Allocator, mc_data_dir: std.fs.Dir, out: std.fs.Dir, w: *std.Io.Writer) !void {
-    try parseDataInner(Parsers, alloc, mc_data_dir, out, w, 0);
+pub fn parseData(io: std.Io, alloc: std.mem.Allocator, mc_data_dir: std.Io.Dir, out: std.Io.Dir, w: *std.Io.Writer) !void {
+    try parseDataInner(Parsers, io, alloc, mc_data_dir, out, w, 0);
 }
 
-fn parseDataInner(T: type, alloc: std.mem.Allocator, mc_data_dir: std.fs.Dir, out: std.fs.Dir, w: *std.Io.Writer, depth: usize) !void {
+fn parseDataInner(T: type, io: std.Io, alloc: std.mem.Allocator, mc_data_dir: std.Io.Dir, out: std.Io.Dir, w: *std.Io.Writer, depth: usize) !void {
     inline for (@typeInfo(T).@"struct".decls) |decl| {
         const field = @field(T, decl.name);
         if (@TypeOf(field) == FileData) {
             try w.splatByteAll(' ', depth * 4);
             try w.print("pub const {s} = @import(\"{s}\");\n", .{ decl.name, @field(T, decl.name).path ++ ".zig" });
-            try parseDataDir(alloc, @field(T, decl.name), mc_data_dir, out);
+            try parseDataDir(io, alloc, @field(T, decl.name), mc_data_dir, out);
         } else {
             try w.splatByteAll(' ', depth * 4);
             try w.print("pub const {s} = struct {{\n", .{decl.name});
-            try parseDataInner(field, alloc, mc_data_dir, out, w, depth + 1);
+            try parseDataInner(field, io, alloc, mc_data_dir, out, w, depth + 1);
             try w.splatByteAll(' ', depth * 4);
             try w.writeAll("};\n");
         }

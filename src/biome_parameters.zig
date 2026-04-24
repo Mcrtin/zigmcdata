@@ -15,13 +15,13 @@ const BiomeParameter = struct {
 
 const Parameters = struct { biomes: []const BiomeParameter };
 
-pub fn gen(gpa: std.mem.Allocator, dir: *std.fs.Dir, out: *std.Io.Writer) !void {
+pub fn gen(io: std.Io, gpa: std.mem.Allocator, dir: *std.Io.Dir, out: *std.Io.Writer) !void {
     try out.writeAll(@embedFile("embeded/BiomeParameters.zig"));
-    var it: std.fs.Dir.Iterator = dir.iterateAssumeFirstIteration();
-    while (try it.next()) |entry| {
-        const file = try dir.openFile(entry.name, .{});
+    var it: std.Io.Dir.Iterator = dir.iterateAssumeFirstIteration();
+    while (try it.next(io)) |entry| {
+        const file = try dir.openFile(io, entry.name, .{});
         var buf: [1024]u8 = undefined;
-        var io_reader = file.reader(&buf);
+        var io_reader = file.reader(io, &buf);
         var r = std.json.Reader.init(gpa, &io_reader.interface);
         defer r.deinit();
         const parsed = try std.json.parseFromTokenSource(Parameters, gpa, &r, .{ .allocate = .alloc_always });

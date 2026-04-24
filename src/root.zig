@@ -42,27 +42,27 @@ const Versions = struct {
 };
 const manifest_url = std.Uri.parse("https://launchermeta.mojang.com/mc/game/version_manifest.json") catch unreachable;
 
-pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: std.fs.Dir) !void {
-    var json_out = try tmp.makeOpenPath("json", .{ .iterate = true });
-    defer json_out.close();
-    var tmp_out = try tmp.makeOpenPath("server", .{});
-    defer tmp_out.close();
+pub fn gen(io: std.Io, version: []const u8, out: std.Io.Dir, gpa: std.mem.Allocator, tmp: std.Io.Dir) !void {
+    var json_out = try tmp.createDirPathOpen(io, "json", .{ .open_options = .{ .iterate = true } });
+    defer json_out.close(io);
+    var tmp_out = try tmp.createDirPathOpen(io, "server", .{});
+    defer tmp_out.close(io);
 
     var it = json_out.iterateAssumeFirstIteration();
-    if (try it.next() == null)
-        try downloadAndExtractServer(gpa, version, json_out, tmp_out)
+    if (try it.next(io) == null)
+        try downloadAndExtractServer(io, gpa, version, json_out, tmp_out)
     else
-        it.reset();
+        it = json_out.iterate();
     const translables: std.json.Parsed(std.json.ArrayHashMap([]const u8)) = blk: {
-        const lang_file = try json_out.openFile("assets/minecraft/lang/en_us.json", .{});
-        defer lang_file.close();
-        const out_lang = try out.createFile("lang.zig", .{});
-        defer out_lang.close();
+        const lang_file = try json_out.openFile(io, "assets/minecraft/lang/en_us.json", .{});
+        defer lang_file.close(io);
+        const out_lang = try out.createFile(io, "lang.zig", .{});
+        defer out_lang.close(io);
         var buf: [1024]u8 = undefined;
         var wbuf: [1024]u8 = undefined;
-        var w = out_lang.writer(&wbuf);
+        var w = out_lang.writer(io, &wbuf);
         defer w.interface.flush() catch {};
-        var lang_reader = lang_file.reader(&buf);
+        var lang_reader = lang_file.reader(io, &buf);
         const lang_data = try readJson(gpa, std.json.ArrayHashMap([]const u8), &lang_reader.interface);
         errdefer lang_data.deinit();
         try lang.gen(&w.interface, &lang_data.value.map);
@@ -70,55 +70,56 @@ pub fn gen(version: []const u8, out: std.fs.Dir, gpa: std.mem.Allocator, tmp: st
     };
     defer translables.deinit();
     {
-        const f = try json_out.openFile("reports/blocks.json", .{});
-        defer f.close();
-        const out_lang = try out.createFile("Block.zig", .{});
-        defer out_lang.close();
+        const f = try json_out.openFile(io, "reports/blocks.json", .{});
+        defer f.close(io);
+        const out_lang = try out.createFile(io, "Block.zig", .{});
+        defer out_lang.close(io);
         var buf: [1024]u8 = undefined;
         var wbuf: [1024]u8 = undefined;
-        var w = out_lang.writer(&wbuf);
+        var w = out_lang.writer(io, &wbuf);
         defer w.interface.flush() catch {};
-        var r = f.reader(&buf);
+        var r = f.reader(io, &buf);
         try block.gen(gpa, &r.interface, &w.interface);
     }
     {
-        var dir = try json_out.openDir("reports/biome_parameters/minecraft", .{ .iterate = true });
-        defer dir.close();
-        const out_file = try out.createFile("BiomeParameters.zig", .{});
-        defer out_file.close();
+        var dir = try json_out.openDir(io, "reports/biome_parameters/minecraft", .{ .iterate = true });
+        defer dir.close(io);
+        const out_file = try out.createFile(io, "BiomeParameters.zig", .{});
+        defer out_file.close(io);
         var wbuf: [1024]u8 = undefined;
-        var w = out_file.writer(&wbuf);
+        var w = out_file.writer(io, &wbuf);
         defer w.interface.flush() catch {};
-        try biome_parameters.gen(gpa, &dir, &w.interface);
+        try biome_parameters.gen(io, gpa, &dir, &w.interface);
     }
     {
-        var mc_data_dir = try json_out.openDir("data/minecraft/", .{ .iterate = true });
-        defer mc_data_dir.close();
+        var mc_data_dir = try json_out.openDir(io, "data/minecraft/", .{ .iterate = true });
+        defer mc_data_dir.close(io);
 
-        var tags = try Tags.parseTags(gpa, mc_data_dir, out);
-        defer tags.deinit();
-        var file = try out.createFile("root.zig", .{});
-        defer file.close();
+        // var tags = try Tags.parseTags(io, gpa, mc_data_dir, out); TODO
+        // defer tags.deinit();
+        var file = try out.createFile(io, "root.zig", .{});
+        defer file.close(io);
         var buf: [300]u8 = undefined;
-        var w = file.writer(&buf);
+        var w = file.writer(io, &buf);
         defer w.interface.flush() catch {};
 
         try w.interface.writeAll("pub const Lang = @import(\"lang.zig\").Lang;\n");
-        try w.interface.writeAll("pub const tags = @import(\"tags.zig\");\n");
+        // try w.interface.writeAll("pub const tags = @import(\"tags.zig\");\n");
         try w.interface.writeAll("pub const Block = @import(\"Block.zig\");\n");
         try w.interface.writeAll("pub const BiomeParameters = @import(\"BiomeParameters.zig\");\n");
 
-        try mc.parseData(gpa, mc_data_dir, out, &w.interface);
+        try mc.parseData(io, gpa, mc_data_dir, out, &w.interface);
     }
 }
 
 pub fn downloadAndExtractServer(
+    io: std.Io,
     gpa: std.mem.Allocator,
     version: []const u8,
-    out_dir: std.fs.Dir,
-    tmp_dir: std.fs.Dir,
+    out_dir: std.Io.Dir,
+    tmp_dir: std.Io.Dir,
 ) !void {
-    var client = std.http.Client{ .allocator = gpa };
+    var client = std.http.Client{ .allocator = gpa, .io = io };
     defer client.deinit();
 
     // ------------------------------------------------------------
@@ -146,10 +147,10 @@ pub fn downloadAndExtractServer(
     // ------------------------------------------------------------
     // Step 3: Download server jar
     // ------------------------------------------------------------
-    var tmp_server_jar = try tmp_dir.createFile("server.jar", .{ .read = true });
+    var tmp_server_jar = try tmp_dir.createFile(io, "server.jar", .{ .read = true });
     {
         var wbuf: [1024]u8 = undefined;
-        var w = tmp_server_jar.writer(&wbuf);
+        var w = tmp_server_jar.writer(io, &wbuf);
         const s = try client.fetch(.{ .location = .{ .uri = server_url }, .response_writer = &w.interface });
         if (s.status.class() != .success) return error.ServerJarFetchFailed;
         try w.interface.flush();
@@ -162,7 +163,7 @@ pub fn downloadAndExtractServer(
     defer gpa.free(path);
     {
         var buf: [1024]u8 = undefined;
-        var r = tmp_server_jar.reader(&buf);
+        var r = tmp_server_jar.reader(io, &buf);
 
         var iter = try std.zip.Iterator.init(&r);
         var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -177,9 +178,9 @@ pub fn downloadAndExtractServer(
 
     {
         var buf: [1024]u8 = undefined;
-        var f = try tmp_dir.openFile(path, .{});
-        defer f.close();
-        var r = f.reader(&buf);
+        var f = try tmp_dir.openFile(io, path, .{});
+        defer f.close(io);
+        var r = f.reader(io, &buf);
 
         var iter = try std.zip.Iterator.init(&r);
         var filename_buf: [std.fs.max_path_bytes]u8 = undefined;

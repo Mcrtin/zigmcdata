@@ -1,7 +1,7 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 
-interface: *std.io.Writer,
+interface: *std.Io.Writer,
 indentation: u32 = 0,
 
 const Self = @This();

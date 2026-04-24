@@ -107,7 +107,7 @@ fn split(out: *std.Io.Writer, str: []const u8, splitter: []const u8) !struct { u
     return .{ line_len, str[blocks_start + splitter.len ..] };
 }
 
-fn printJson(depth: u32, w: *std.io.Writer, val: std.json.Value, a: std.mem.Allocator) !void {
+fn printJson(depth: u32, w: *std.Io.Writer, val: std.json.Value, a: std.mem.Allocator) !void {
     switch (val) {
         .null => try w.writeAll("null"),
         .bool => |v| try w.writeAll(if (v) "true" else "false"),
