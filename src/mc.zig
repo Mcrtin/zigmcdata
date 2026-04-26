@@ -41,7 +41,7 @@ const Parsers = struct {
 
 const FileExtension = enum { json, mcmeta, nbt };
 
-pub fn parseDataDir(io: std.Io, alloc: std.mem.Allocator, file_data: FileData, mc_data_dir: std.Io.Dir, out: std.Io.Dir) !void {
+pub fn parseDataDir(comptime file_data: FileData, io: std.Io, alloc: std.mem.Allocator, mc_data_dir: std.Io.Dir, out: std.Io.Dir) !void {
     var pbuf: [std.fs.max_path_bytes]u8 = undefined;
     var dir = try mc_data_dir.openDir(io, file_data.path, .{ .iterate = true });
     defer dir.close(io);
@@ -77,7 +77,7 @@ pub fn parseDataDir(io: std.Io, alloc: std.mem.Allocator, file_data: FileData, m
 
                         var r = std.json.Reader.init(alloc, &freader.interface);
                         defer r.deinit();
-                        const val = std.json.parseFromTokenSource(file_data.type_file, alloc, &r, .{ .ignore_unknown_fields = true }) catch |e| { //TODO
+                        const val = std.json.parseFromTokenSource(file_data.type_file, alloc, &r, .{ .ignore_unknown_fields = true }) catch |e| {
                             if (r.peekNextTokenType()) |next_token| {
                                 std.debug.print("in: {s} next token: {t}\n", .{ f.path, next_token });
                             } else |e2| {
@@ -86,6 +86,8 @@ pub fn parseDataDir(io: std.Io, alloc: std.mem.Allocator, file_data: FileData, m
                             return e;
                         };
                         defer val.deinit();
+                        // @setEvalBranchQuota(100000);
+                        // try std.zon.stringify.serializeArbitraryDepth(val.value, .{}, &w.interface); TODO: currently, ptrs are ignored
                         try writeZig.write(&w.interface, 0, val.value);
                         try w.interface.writeAll(";\n");
                     },
@@ -99,17 +101,30 @@ pub fn parseDataDir(io: std.Io, alloc: std.mem.Allocator, file_data: FileData, m
     }
 }
 
+fn FileDataSerializer(comptime file_data: FileData) type {
+    return struct {
+        pub fn parse(io: std.Io, alloc: std.mem.Allocator, mc_data_dir: std.Io.Dir, out: std.Io.Dir) void {
+            parseDataDir(file_data, io, alloc, mc_data_dir, out) catch |e| {
+                std.debug.print("cauth error {t} in write function!\n", .{e});
+                if (@errorReturnTrace()) |st| std.debug.dumpErrorReturnTrace(st);
+            };
+        }
+    };
+}
+
 pub fn parseData(io: std.Io, alloc: std.mem.Allocator, mc_data_dir: std.Io.Dir, out: std.Io.Dir, w: *std.Io.Writer) !void {
     try parseDataInner(Parsers, io, alloc, mc_data_dir, out, w, 0);
 }
 
 fn parseDataInner(T: type, io: std.Io, alloc: std.mem.Allocator, mc_data_dir: std.Io.Dir, out: std.Io.Dir, w: *std.Io.Writer, depth: usize) !void {
+    var group: std.Io.Group = .init;
     inline for (@typeInfo(T).@"struct".decls) |decl| {
         const field = @field(T, decl.name);
         if (@TypeOf(field) == FileData) {
             try w.splatByteAll(' ', depth * 4);
             try w.print("pub const {s} = @import(\"{s}\");\n", .{ decl.name, @field(T, decl.name).path ++ ".zig" });
-            try parseDataDir(io, alloc, @field(T, decl.name), mc_data_dir, out);
+            const data: FileData = @field(T, decl.name);
+            group.async(io, FileDataSerializer(data).parse, .{ io, alloc, mc_data_dir, out });
         } else {
             try w.splatByteAll(' ', depth * 4);
             try w.print("pub const {s} = struct {{\n", .{decl.name});
@@ -118,4 +133,5 @@ fn parseDataInner(T: type, io: std.Io, alloc: std.mem.Allocator, mc_data_dir: st
             try w.writeAll("};\n");
         }
     }
+    try group.await(io);
 }

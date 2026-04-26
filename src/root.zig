@@ -125,6 +125,7 @@ pub fn downloadAndExtractServer(
     // ------------------------------------------------------------
     // Step 1: Download version manifest
     // ------------------------------------------------------------
+    std.debug.print("downloading manifest\n", .{});
     const versions = try requestJson(Versions, gpa, &client, manifest_url);
     defer versions.deinit();
     var version_data: ?VersionData = null;
@@ -140,6 +141,7 @@ pub fn downloadAndExtractServer(
     // ------------------------------------------------------------
     // Step 2: Download version metadata
     // ------------------------------------------------------------
+    std.debug.print("downloading metadata\n", .{});
     const package = try requestJson(Package, gpa, &client, version_url);
     defer package.deinit();
     const server_url = try std.Uri.parse(package.value.downloads.server.url);
@@ -149,6 +151,7 @@ pub fn downloadAndExtractServer(
     // ------------------------------------------------------------
     var tmp_server_jar = try tmp_dir.createFile(io, "server.jar", .{ .read = true });
     {
+        std.debug.print("downloading server.jar\n", .{});
         var wbuf: [1024]u8 = undefined;
         var w = tmp_server_jar.writer(io, &wbuf);
         const s = try client.fetch(.{ .location = .{ .uri = server_url }, .response_writer = &w.interface });
@@ -156,46 +159,61 @@ pub fn downloadAndExtractServer(
         try w.interface.flush();
     }
 
-    // ------------------------------------------------------------
-    // Step 4: Extract jar (zip archive)
-    // ------------------------------------------------------------
-    const path = try std.fmt.allocPrint(gpa, "META-INF/versions/{s}/server-{s}.jar", .{ version, version });
-    defer gpa.free(path);
-    {
-        var buf: [1024]u8 = undefined;
-        var r = tmp_server_jar.reader(io, &buf);
+    // // ------------------------------------------------------------
+    // // Step 4: Extract jar (zip archive)
+    // // ------------------------------------------------------------
+    // const path = try std.fmt.allocPrint(gpa, "META-INF/versions/{s}/server-{s}.jar", .{ version, version });
+    // defer gpa.free(path);
+    // {
+    //     std.debug.print("extracting inner server.jar\n", .{});
+    //     var buf: [1024]u8 = undefined;
+    //     var r = tmp_server_jar.reader(io, &buf);
+    //
+    //     var iter = try std.zip.Iterator.init(&r);
+    //     var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
+    //     while (try iter.next()) |item| {
+    //         try r.seekTo(item.header_zip_offset + @sizeOf(std.zip.CentralDirectoryFileHeader));
+    //         const filename = filename_buf[0..item.filename_len];
+    //         try r.interface.readSliceAll(filename);
+    //         if (std.mem.eql(u8, filename, path))
+    //             try item.extract(&r, .{}, &filename_buf, tmp_dir);
+    //     }
+    // }
 
-        var iter = try std.zip.Iterator.init(&r);
-        var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
-        while (try iter.next()) |item| {
-            try r.seekTo(item.header_zip_offset + @sizeOf(std.zip.CentralDirectoryFileHeader));
-            const filename = filename_buf[0..item.filename_len];
-            try r.interface.readSliceAll(filename);
-            if (std.mem.eql(u8, filename, path))
-                try item.extract(&r, .{}, &filename_buf, tmp_dir);
+    {
+        std.debug.print("generating reports\n", .{});
+        const res = try std.process.run(gpa, io, .{
+            .cwd = .{ .dir = tmp_dir },
+            .expand_arg0 = .expand,
+            .argv = &.{ "java", "-DbundlerMainClass=net.minecraft.data.Main", "-jar", "server.jar", "--reports", "--output", "../json" },
+        });
+        defer gpa.free(res.stderr);
+        defer gpa.free(res.stdout);
+        if (res.term.exited != 0) {
+            std.debug.print("something went wrong when running java; error trace:\n{s}", .{res.stderr});
+            return error.JavaErrored;
         }
     }
 
     {
+        std.debug.print("extracting server.jar\n", .{});
         var buf: [1024]u8 = undefined;
+        const path = try std.fmt.allocPrint(gpa, "versions/{s}/server-{s}.jar", .{ version, version });
+        defer gpa.free(path);
         var f = try tmp_dir.openFile(io, path, .{});
         defer f.close(io);
         var r = f.reader(io, &buf);
-
-        var iter = try std.zip.Iterator.init(&r);
-        var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
-        while (try iter.next()) |item| {
-            try r.seekTo(item.header_zip_offset + @sizeOf(std.zip.CentralDirectoryFileHeader));
-            const filename = filename_buf[0..item.filename_len];
-            try r.interface.readSliceAll(filename);
-            if (std.mem.startsWith(u8, filename, "data") or std.mem.startsWith(u8, filename, "asset"))
-                try item.extract(&r, .{}, &filename_buf, out_dir);
-        }
-    }
-    {
-        // try std.process.execv(gpa, &.{ "java", "-DbulderMainClass=\"net.minecraft.data.Main", "-jar", "server.jar", "--reports", "--output", "../json" });
-        //java -DbundlerMainClass="net.minecraft.data.Main" -jar server.jar --reports --output ../json
-
+        try std.zip.extract(out_dir, &r, .{});
+        //
+        // var iter = try std.zip.Iterator.init(&r);
+        // var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
+        // while (try iter.next()) |item| {
+        //     try r.seekTo(item.header_zip_offset + @sizeOf(std.zip.CentralDirectoryFileHeader));
+        //     const filename = filename_buf[0..item.filename_len];
+        //     try r.interface.readSliceAll(filename);
+        //     if (std.mem.startsWith(u8, filename, "data") or std.mem.startsWith(u8, filename, "asset"))
+        //         try item.extract(&r, .{}, &filename_buf, out_dir);
+        // }
     }
 }
 
